@@ -1,0 +1,59 @@
+name: Azimuth Guardrails Intake
+description: Report pitfalls, conflicts, or improvements to /GUARDRAILS.md and /agent_context
+labels: ["guardrails", "needs-triage"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Dataform/BigQuery
+        - API/FastAPI
+        - Frontend/Next.js
+        - AI Batch (Free)
+        - RAG (Paid)
+        - IAM/Secrets
+        - Observability/Cost
+        - CI/CD & Tooling
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How bad is it when it happens?
+      options: [S1-Blocking, S2-High, S3-Medium, S4-Low]
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      description: How often does it occur?
+      options: [F1-Often, F2-Sometimes, F3-Rare]
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      placeholder: One-sentence description
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction / Evidence
+      description: Steps, commands, logs, or links to PRs/runs/screens
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed guardrail / automation
+      description: Lint/test/check or doc change that prevents it
+  - type: textarea
+    id: context_refs
+    attributes:
+      label: Relevant context
+      description: Lines/sections in GUARDRAILS.md or ai_contract.json; BigQuery view names; endpoint paths
+  - type: checkboxes
+    id: automation
+    attributes:
+      label: Can we automate detection?
+      options:
+        - label: Pre-commit hook
+        - label: CI lint/test
+        - label: Dataform assertion
+        - label: Runtime safeguard
+        - label: Monitoring/Alert

@@ -1,0 +1,127 @@
+name: Guardrails Intake Auto-Triage
+
+on:
+  issues:
+    types: [opened, edited, reopened, labeled]
+
+permissions:
+  issues: write
+  contents: read
+  pull-requests: read
+  actions: read
+  projects: write
+
+jobs:
+  triage:
+    if: github.event.issue != null && contains(github.event.issue.labels.*.name, 'guardrails')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract fields & score
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+            // Helpers
+            function pick(regex, def='') {
+              const m = body.match(regex);
+              return m ? m[1].trim() : def;
+            }
+            // Parse from issue form body
+            const area = pick(/\*\*Area\*\*[\s\S]*?\n\>\s*(.+)/i) || pick(/Area\s*\n\s*\*\*\s*(.+)/i) || '';
+            const severity = pick(/Severity[\s\S]*?\n\>\s*(S[1-4]-?[A-Za-z]*)/i);
+            const frequency = pick(/Frequency[\s\S]*?\n\>\s*(F[1-3]-?[A-Za-z]*)/i);
+            // Score maps
+            const sevMap = { 'S1': 8, 'S2': 5, 'S3': 3, 'S4': 1 };
+            const freqMap = { 'F1': 3, 'F2': 2, 'F3': 1 };
+            function normalize(code) { return (code || '').toUpperCase().slice(0,2); }
+            const sevKey = normalize(severity);
+            const freqKey = normalize(frequency);
+            const score = (sevMap[sevKey] || 0) + (freqMap[freqKey] || 0);
+            core.setOutput('area', area);
+            core.setOutput('severity', severity);
+            core.setOutput('frequency', frequency);
+            core.setOutput('score', String(score));
+      - name: Apply labels & annotate
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { area, severity, frequency, score } = core.getInput('parse', { required: false }) ? {} : {};
+            // Workaround: re-read outputs via environment (github-script limitation)
+            const areaOut = process.env.AREA || '';
+            const severityOut = process.env.SEVERITY || '';
+            const frequencyOut = process.env.FREQUENCY || '';
+            const scoreOut = process.env.SCORE || '';
+          env:
+            AREA: ${{ steps.parse.outputs.area }}
+            SEVERITY: ${{ steps.parse.outputs.severity }}
+            FREQUENCY: ${{ steps.parse.outputs.frequency }}
+            SCORE: ${{ steps.parse.outputs.score }}
+          script: |
+            const issue = context.payload.issue;
+            const area = process.env.AREA || '';
+            const severity = process.env.SEVERITY || '';
+            const frequency = process.env.FREQUENCY || '';
+            const score = process.env.SCORE || '';
+            // Map area to label
+            function toAreaLabel(area) {
+              const a = (area || '').toLowerCase();
+              if (a.includes('dataform') || a.includes('bigquery')) return 'area:data';
+              if (a.includes('api') || a.includes('fastapi')) return 'area:api';
+              if (a.includes('front') || a.includes('next')) return 'area:fe';
+              if (a.includes('rag')) return 'area:rag';
+              if (a.includes('batch')) return 'area:ai-batch';
+              if (a.includes('iam') || a.includes('secret')) return 'area:iam';
+              if (a.includes('observ') || a.includes('cost')) return 'area:observability';
+              if (a.includes('ci') || a.includes('tool')) return 'area:ci-cd';
+              return 'needs-triage';
+            }
+            const areaLabel = toAreaLabel(area);
+            // Ensure base labels
+            const labelsToAdd = ['guardrails', areaLabel];
+            // Update title with score prefix if absent
+            let title = issue.title;
+            if (!/^\[P=\d+\]/.test(title) && score) {
+              title = `[P=${score}] ${title}`.slice(0, 250);
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                title
+              });
+            }
+            // Add labels
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: labelsToAdd
+            });
+            // Comment summary
+            const summary = [
+              `**Auto-triage summary**`,
+              `- Area: ${areaLabel} (${area || 'n/a'})`,
+              `- Severity: ${severity || 'n/a'}`,
+              `- Frequency: ${frequency || 'n/a'}`,
+              `- Priority score: **${score || '0'}**`,
+              ``,
+              `> Edit the issue to update these fields; the workflow will re-score automatically.`
+            ].join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: summary
+            });
+      - name: (Optional) Add to project
+        if: ${{ false }} # Set to true after configuring PROJECT_ID and FIELD_IDS
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // Example for org project v2 — requires org-level PAT with project write
+            // const PROJECT_ID = 123456;
+            // await github.graphql(`
+            //   mutation($project:ID!, $issue:ID!) {
+            //     addProjectV2ItemById(input:{projectId:$project, contentId:$issue}) { item { id } }
+            //   }`, { project: PROJECT_ID, issue: context.payload.issue.node_id });
