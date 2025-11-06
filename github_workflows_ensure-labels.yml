@@ -1,0 +1,32 @@
+name: Ensure Standard Labels
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  ensure-labels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const desired = [
+              'guardrails','needs-triage','accepted','rejected','duplicate',
+              'area:data','area:api','area:fe','area:ai-batch','area:rag','area:iam','area:observability','area:ci-cd',
+              'action:doc','action:lint','action:test','action:assertion','action:monitor'
+            ];
+            const { data: existing } = await github.rest.issues.listLabelsForRepo({
+              owner: context.repo.owner, repo: context.repo.repo, per_page: 100
+            });
+            const have = new Set(existing.map(l => l.name));
+            for (const name of desired) {
+              if (!have.has(name)) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner, repo: context.repo.repo, name
+                }).catch(e => core.warning(`Label ${name}: ${e.message}`));
+              }
+            }

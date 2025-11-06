@@ -1,0 +1,19 @@
+# Azimuth GitHub Labels
+guardrails
+needs-triage
+accepted
+rejected
+duplicate
+area:data
+area:api
+area:fe
+area:ai-batch
+area:rag
+area:iam
+area:observability
+area:ci-cd
+action:doc
+action:lint
+action:test
+action:assertion
+action:monitor
